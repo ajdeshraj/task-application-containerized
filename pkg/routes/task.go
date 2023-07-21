@@ -57,4 +57,23 @@ func CreateTask(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, gin.H{})
+
+    // Getting Task ID of just inserted task
+    var lastTask models.Task
+
+    lastRes := initializers.DB.Last(&lastTask)
+    if lastRes.Error != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Add Access Management",
+        })
+        return
+    }
+
+    // Inserting Default Role Access for this Task as Open
+    taskRole := models.TaskAccessRole {TaskId: lastTask.ID, RoleId: 1}
+    initializers.DB.Create(&taskRole)
+
+    // Inserting Default Group Access for this Task as Open
+    taskGroup := models.TaskAccessGroup {TaskId: lastTask.ID, GroupId: 1}
+    initializers.DB.Create(&taskGroup)
 }
