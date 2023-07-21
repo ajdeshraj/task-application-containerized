@@ -4,6 +4,6 @@ import "gorm.io/gorm"
 
 type UserAccessRole struct {
     gorm.Model
-    UserId uint
+    UserId uint `gorm:"unique"`
     RoleId uint
 }
