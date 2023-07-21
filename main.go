@@ -25,6 +25,8 @@ func main() {
     r.POST("/login", routes.Login)
     r.GET("/validate", middleware.RequireAuth, routes.Validate)
     r.POST("/addtask", middleware.RequireAuth, routes.CreateTask)
+    r.POST("/addrole", middleware.RequireAuth, routes.AddRole)
+    r.POST("/addgroup", middleware.RequireAuth, routes.AddGroup)
 
     r.Run()
 }
