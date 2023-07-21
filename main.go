@@ -23,12 +23,16 @@ func main() {
 
     r.POST("/signup", routes.SignUp)
     r.POST("/login", routes.Login)
-    r.GET("/validate", middleware.RequireAuth, routes.Validate)
+    // r.GET("/validate", middleware.RequireAuth, routes.Validate)
     r.POST("/addtask", middleware.RequireAuth, routes.CreateTask)
     r.POST("/addrole", middleware.RequireAuth, routes.AddRole)
     r.DELETE("/deleterole", middleware.RequireAuth, routes.DeleteRole)
     r.POST("/addgroup", middleware.RequireAuth, routes.AddGroup)
     r.DELETE("/deletegroup", middleware.RequireAuth, routes.DeleteGroup)
+    r.POST("/user/addrole", middleware.RequireAuth, routes.AddUserRole)
+    r.DELETE("/user/deleterole", middleware.RequireAuth, routes.DeleteUserRole)
+    r.POST("/user/addgroup", middleware.RequireAuth, routes.AddUserGroup)
+    r.DELETE("/user/deletegroup", middleware.RequireAuth, routes.DeleteUserGroup)
 
     r.Run()
 }
