@@ -15,7 +15,7 @@ import (
 func SignUp(c *gin.Context) {
     // Obtain Email and Password from req body
     var body struct {
-        Email string `json: "Email" binding: "required"`
+        Email string `json: "Email" binding:"required"`
         Password string `json:"Password" binding:"required"`
     }
 

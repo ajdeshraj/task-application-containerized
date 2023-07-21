@@ -14,6 +14,8 @@ func init() {
     initializers.LoadEnvVars()
     initializers.ConnectDb()
     initializers.SyncDb()
+    initializers.InsertRoleDb()
+    initializers.InsertGroupDb()
 }
 
 func main() {
@@ -22,5 +24,7 @@ func main() {
     r.POST("/signup", routes.SignUp)
     r.POST("/login", routes.Login)
     r.GET("/validate", middleware.RequireAuth, routes.Validate)
+    r.POST("/addtask", middleware.RequireAuth, routes.CreateTask)
+
     r.Run()
 }
