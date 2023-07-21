@@ -26,7 +26,9 @@ func main() {
     r.GET("/validate", middleware.RequireAuth, routes.Validate)
     r.POST("/addtask", middleware.RequireAuth, routes.CreateTask)
     r.POST("/addrole", middleware.RequireAuth, routes.AddRole)
+    r.DELETE("/deleterole", middleware.RequireAuth, routes.DeleteRole)
     r.POST("/addgroup", middleware.RequireAuth, routes.AddGroup)
+    r.DELETE("/deletegroup", middleware.RequireAuth, routes.DeleteGroup)
 
     r.Run()
 }
