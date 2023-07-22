@@ -1,10 +1,10 @@
 package middleware
 
 import (
-	"bar/foo/pkg/initializers"
-	"bar/foo/pkg/models"
 	"fmt"
-    "os"
+	"os"
+	"webapp/initializers"
+	"webapp/models"
 
 	"net/http"
 	"time"
@@ -14,42 +14,42 @@ import (
 )
 
 func RequireAuth(c *gin.Context) {
-    // Obtain Cookie off Request
-    tokenString, err := c.Cookie("Authorization")
-    if err != nil {
-        c.AbortWithStatus(http.StatusUnauthorized)
-    }
+	// Obtain Cookie off Request
+	tokenString, err := c.Cookie("Authorization")
+	if err != nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+	}
 
-    // Decode/Validate Cookie Token
-    token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-            return nil, fmt.Errorf("Unexpected String Sigining Method: %v", token.Header["alg"])
-        }
+	// Decode/Validate Cookie Token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Unexpected String Sigining Method: %v", token.Header["alg"])
+		}
 
-        return []byte(os.Getenv("SECRETKEY")), nil
-    })
+		return []byte(os.Getenv("SECRETKEY")), nil
+	})
 
-    if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-        // Check the Expiration of the Cookie
-        if float64(time.Now().Unix()) > claims["exp"].(float64) {
-            c.AbortWithStatus(http.StatusUnauthorized)
-        }
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// Check the Expiration of the Cookie
+		if float64(time.Now().Unix()) > claims["exp"].(float64) {
+			c.AbortWithStatus(http.StatusUnauthorized)
+		}
 
-        // Find User with Token
-        var user models.User
-        initializers.DB.Find(&user, claims["sub"])
-        
-        if user.ID == 0 {
-            c.AbortWithStatus(http.StatusUnauthorized)
-        }
+		// Find User with Token
+		var user models.User
+		initializers.DB.Find(&user, claims["sub"])
 
-        // Attach to Request
-        c.Set("userToken", tokenString)
+		if user.ID == 0 {
+			c.AbortWithStatus(http.StatusUnauthorized)
+		}
 
-        c.Next()
+		// Attach to Request
+		c.Set("userToken", tokenString)
 
-        fmt.Println(claims["sub"])
-    } else {
-        c.AbortWithStatus(http.StatusUnauthorized)
-    }
+		c.Next()
+
+		fmt.Println(claims["sub"])
+	} else {
+		c.AbortWithStatus(http.StatusUnauthorized)
+	}
 }

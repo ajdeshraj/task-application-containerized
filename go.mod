@@ -1,4 +1,4 @@
-module bar/foo
+module webapp
 
 go 1.19
 
