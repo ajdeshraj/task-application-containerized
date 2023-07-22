@@ -39,6 +39,7 @@ func main() {
     r.DELETE("/task/deletegroup", middleware.RequireAuth, routes.DeleteTaskGroup)
     r.PATCH("/updatetask", middleware.RequireAuth, routes.UpdateTask)
     r.GET("/logout", routes.Logout)
+    r.DELETE("/deleteuser", middleware.RequireAuth, routes.DeleteUser)
 
     r.Run()
 }

@@ -316,6 +316,58 @@ func DeleteUserGroup(c *gin.Context) {
     c.JSON(http.StatusOK,gin.H{})
 }
 
+func DeleteUser(c *gin.Context) {
+    userToken, exists := c.Get("userToken")
+    if !exists {
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    // Decode Token String to obtain User ID
+    token, _ := jwt.Parse(userToken.(string), func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("Unexpected String Sigining Method: %v", token.Header["alg"])
+        }
+
+        return []byte(os.Getenv("SECRETKEY")), nil
+    })
+
+    claims, ok := token.Claims.(jwt.MapClaims) 
+    if !(ok && token.Valid) {
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    userId := claims["sub"].(float64)
+
+    userDelResult := initializers.DB.Where("id=?", userId).Delete(&models.User{})
+    if userDelResult.Error != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Delete User",
+        })
+        return
+    }
+
+    userRoleDelResult := initializers.DB.Where("user_id=?", userId).Delete(&models.UserAccessRole{})
+    if userRoleDelResult.Error != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Delete User-Role",
+        })
+        return
+    }
+
+    userGroupDelResult := initializers.DB.Where("user_id=?", userId).Delete(&models.UserAccessGroup{})
+    if userGroupDelResult.Error != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Delete User-Group",
+        })
+        return
+    }
+
+    // Removing Auth Token Cookie
+    c.SetCookie("Authorization", "", -1, "", "", false, true)
+
+    c.JSON(http.StatusOK, gin.H{})
+}
+
 func Logout(c *gin.Context) {
     c.SetCookie("Authorization", "", -1, "", "", false, true)
     c.JSON(http.StatusOK, gin.H{
