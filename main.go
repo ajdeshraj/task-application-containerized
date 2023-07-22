@@ -33,6 +33,10 @@ func main() {
     r.DELETE("/user/deleterole", middleware.RequireAuth, routes.DeleteUserRole)
     r.POST("/user/addgroup", middleware.RequireAuth, routes.AddUserGroup)
     r.DELETE("/user/deletegroup", middleware.RequireAuth, routes.DeleteUserGroup)
+    r.POST("/task/addrole", middleware.RequireAuth, routes.AddTaskRole)
+    r.DELETE("/task/deleterole", middleware.RequireAuth, routes.DeleteTaskRole)
+    r.POST("/task/addgroup", middleware.RequireAuth, routes.AddTaskGroup)
+    r.DELETE("/task/deletegroup", middleware.RequireAuth, routes.DeleteTaskGroup)
 
     r.Run()
 }
