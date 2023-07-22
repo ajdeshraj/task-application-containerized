@@ -1,11 +1,12 @@
 package routes
 
 import (
-    "os"
-    "fmt"
 	"bar/foo/pkg/initializers"
 	"bar/foo/pkg/models"
+	"bar/foo/pkg/utils"
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
@@ -76,6 +77,128 @@ func CreateTask(c *gin.Context) {
     // Inserting Default Group Access for this Task as Open
     taskGroup := models.TaskAccessGroup {TaskId: lastTask.ID, GroupId: 1}
     initializers.DB.Create(&taskGroup)
+}
+
+func UpdateTask(c *gin.Context) {
+    userToken, exists := c.Get("userToken")
+    if !exists {
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    // Decode Token String to obtain User ID
+    token, err := jwt.Parse(userToken.(string), func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("Unexpected String Sigining Method: %v", token.Header["alg"])
+        }
+
+        return []byte(os.Getenv("SECRETKEY")), nil
+    })
+
+    claims, ok := token.Claims.(jwt.MapClaims) 
+    if !(ok && token.Valid) {
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    userId := claims["sub"].(float64)
+
+    // Finding User Role
+    var user models.UserAccessRole
+    result := initializers.DB.Where("user_id=?", userId).Find(&user)
+    if result.Error != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Unable to Find User Role",
+        })
+        return
+    }
+    userRole := user.RoleId
+
+    // Finding User Groups
+    var userGroup []models.UserAccessGroup
+
+    initializers.DB.Where("user_id=?", userId).Find(&userGroup)
+    var userArrayGroup []uint
+    for i := 0; i < len(userGroup); i++ {
+        // userArrayGroup[i] = userGroup[i].GroupId
+        userArrayGroup = append(userArrayGroup, userGroup[i].GroupId)
+    }
+
+    var body struct {
+        OldDescription string `json:"oldDescription" binding:"required"`
+        NewDescription string `json:"newDescription"`
+        Completed bool `json:"Completed"`
+    }
+    err = c.Bind(&body)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Read Request Body",
+        })
+        return
+    }
+
+    // Finding Task ID 
+    var task models.Task
+    res := initializers.DB.Where("Description=?", body.OldDescription).Find(&task)
+    if res.Error != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Find Task",
+        })
+        return
+    }
+
+    // Finding Roles that can Access the Task
+    var roleTask []models.TaskAccessRole
+
+    initializers.DB.Where("task_id=?", task.ID).Find(&roleTask)
+    var taskArrayRole []uint
+    for i := 0; i < len(taskArrayRole); i++ {
+        // taskArrayRole[i] = roleTask[i].RoleId
+        taskArrayRole = append(taskArrayRole, roleTask[i].RoleId)
+    }
+
+    // Finding Groups that can Access the Task
+    var groupTask []models.TaskAccessGroup
+
+    initializers.DB.Where("task_id=?", task.ID).Find(&groupTask)
+    var taskArrayGroup []uint
+    for i := 0; i < len(taskArrayGroup); i++ {
+        // taskArrayGroup[i] = groupTask[i].GroupId
+        taskArrayGroup = append(taskArrayGroup, groupTask[i].GroupId)
+    }
+
+    canUpdate := false
+    // Checking if user can access the given task
+    // Checking Roles
+    // if userRole in retRoleTask:
+    commonTask := utils.ElementInArray(taskArrayRole, userRole)
+    if commonTask {
+        canUpdate = true
+    } else {
+        // Deny Update
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    // Checking Groups
+    commonGroup := utils.ArrayIntersection(taskArrayGroup, userArrayGroup)
+    if len(commonGroup) > 0 {
+        canUpdate = true
+    } else {
+        // Deny Update
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    if canUpdate {
+        // Update Task
+        // Update Completed because Default value of Completed will be false
+        initializers.DB.Model(&task).Update("Completed", body.Completed)
+        if body.NewDescription != "" {
+            initializers.DB.Model(&task).Update("Description", body.NewDescription)
+        }
+    } else {
+        // Deny Update 
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    c.JSON(http.StatusOK, gin.H{})
 }
 
 func AddTaskRole(c *gin.Context) {
@@ -240,7 +363,7 @@ func AddTaskGroup(c *gin.Context) {
     err = c.Bind(&body)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
-            "error": "Failed to Read Request Body",
+            "error": err.Error(),
         })
         return
     }
