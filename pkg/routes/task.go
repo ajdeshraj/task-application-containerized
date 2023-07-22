@@ -83,6 +83,7 @@ func CreateTask(c *gin.Context) {
 }
 
 func UpdateTask(c *gin.Context) {
+    var canUpdate bool
     userToken, exists := c.Get("userToken")
     if !exists {
         c.AbortWithStatus(http.StatusUnauthorized)
@@ -103,27 +104,6 @@ func UpdateTask(c *gin.Context) {
     }
 
     userId := claims["sub"].(float64)
-
-    // Finding User Role
-    var user models.UserAccessRole
-    result := initializers.DB.Where("user_id=?", userId).Find(&user)
-    if result.Error != nil || result.RowsAffected == 0 {
-        c.JSON(http.StatusBadRequest, gin.H{
-            "error": "Unable to Find User Role",
-        })
-        return
-    }
-    userRole := user.RoleId
-
-    // Finding User Groups
-    var userGroup []models.UserAccessGroup
-
-    initializers.DB.Where("user_id=?", userId).Find(&userGroup)
-    var userArrayGroup []uint
-    for i := 0; i < len(userGroup); i++ {
-        // userArrayGroup[i] = userGroup[i].GroupId
-        userArrayGroup = append(userArrayGroup, userGroup[i].GroupId)
-    }
 
     var body struct {
         OldDescription string `json:"oldDescription" binding:"required"`
@@ -168,7 +148,44 @@ func UpdateTask(c *gin.Context) {
         taskArrayGroup = append(taskArrayGroup, groupTask[i].GroupId)
     }
 
-    canUpdate := false
+    // Checking for Open Role or Group
+    if utils.ElementInArray(taskArrayRole, uint(1)) && utils.ElementInArray(taskArrayGroup, uint(1)) {
+        // Update Task
+        // Update Completed because Default value of Completed will be false
+        initializers.DB.Model(&task).Update("Completed", body.Completed)
+        if body.NewDescription != "" {
+            initializers.DB.Model(&task).Update("Description", body.NewDescription)
+        }
+    } else {
+        // Deny Update 
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "Cannot Update Task",
+        })
+        return
+    }
+
+    // Finding User Role
+    var user models.UserAccessRole
+    result := initializers.DB.Where("user_id=?", userId).Find(&user)
+    if result.Error != nil || result.RowsAffected == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Unable to Find User Role",
+        })
+        return
+    }
+    userRole := user.RoleId
+
+    // Finding User Groups
+    var userGroup []models.UserAccessGroup
+
+    initializers.DB.Where("user_id=?", userId).Find(&userGroup)
+    var userArrayGroup []uint
+    for i := 0; i < len(userGroup); i++ {
+        // userArrayGroup[i] = userGroup[i].GroupId
+        userArrayGroup = append(userArrayGroup, userGroup[i].GroupId)
+    }
+
+
     // Checking if user can access the given task
     // Checking Roles
     fmt.Println(taskArrayRole, userRole)
@@ -215,6 +232,7 @@ func UpdateTask(c *gin.Context) {
 }
 
 func DeleteTask (c *gin.Context) {
+    var canDelete bool
     userToken, exists := c.Get("userToken")
     if !exists {
         c.AbortWithStatus(http.StatusUnauthorized)
@@ -235,27 +253,6 @@ func DeleteTask (c *gin.Context) {
     }
 
     userId := claims["sub"].(float64)
-
-    // Finding User Role
-    var user models.UserAccessRole
-    result := initializers.DB.Where("user_id=?", userId).Find(&user)
-    if result.Error != nil || result.RowsAffected == 0 {
-        c.JSON(http.StatusBadRequest, gin.H{
-            "error": "Unable to Find User Role",
-        })
-        return
-    }
-    userRole := user.RoleId
-
-    // Finding User Groups
-    var userGroup []models.UserAccessGroup
-
-    initializers.DB.Where("user_id=?", userId).Find(&userGroup)
-    var userArrayGroup []uint
-    for i := 0; i < len(userGroup); i++ {
-        // userArrayGroup[i] = userGroup[i].GroupId
-        userArrayGroup = append(userArrayGroup, userGroup[i].GroupId)
-    }
 
     var body struct {
         Description string `json:"Description" binding:"required"`
@@ -298,7 +295,38 @@ func DeleteTask (c *gin.Context) {
         taskArrayGroup = append(taskArrayGroup, groupTask[i].GroupId)
     }
 
-    canDelete := false
+    // Checking for Open Role or Group
+    if utils.ElementInArray(taskArrayRole, uint(1)) && utils.ElementInArray(taskArrayGroup, uint(1)) {
+        initializers.DB.Delete(&task)
+    } else {
+        // Deny Delete
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "Cannot Delete Task",
+        })
+        return
+    }
+
+    // Finding User Role
+    var user models.UserAccessRole
+    result := initializers.DB.Where("user_id=?", userId).Find(&user)
+    if result.Error != nil || result.RowsAffected == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Unable to Find User Role",
+        })
+        return
+    }
+    userRole := user.RoleId
+
+    // Finding User Groups
+    var userGroup []models.UserAccessGroup
+
+    initializers.DB.Where("user_id=?", userId).Find(&userGroup)
+    var userArrayGroup []uint
+    for i := 0; i < len(userGroup); i++ {
+        // userArrayGroup[i] = userGroup[i].GroupId
+        userArrayGroup = append(userArrayGroup, userGroup[i].GroupId)
+    }
+
     // Checking if user can access the given task
     // Checking Roles
     fmt.Println(taskArrayRole, userRole)
