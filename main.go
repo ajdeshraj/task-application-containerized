@@ -38,6 +38,7 @@ func main() {
     r.POST("/task/addgroup", middleware.RequireAuth, routes.AddTaskGroup)
     r.DELETE("/task/deletegroup", middleware.RequireAuth, routes.DeleteTaskGroup)
     r.PATCH("/updatetask", middleware.RequireAuth, routes.UpdateTask)
+    r.GET("/logout", routes.Logout)
 
     r.Run()
 }
