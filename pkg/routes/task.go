@@ -171,7 +171,6 @@ func UpdateTask(c *gin.Context) {
     canUpdate := false
     // Checking if user can access the given task
     // Checking Roles
-    // if userRole in retRoleTask:
     fmt.Println(taskArrayRole, userRole)
     commonTask := utils.ElementInArray(taskArrayRole, userRole)
     fmt.Println(commonTask)
@@ -208,6 +207,131 @@ func UpdateTask(c *gin.Context) {
         // Deny Update 
         c.JSON(http.StatusUnauthorized, gin.H{
             "error": "Cannot Update Task",
+        })
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{})
+}
+
+func DeleteTask (c *gin.Context) {
+    userToken, exists := c.Get("userToken")
+    if !exists {
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    // Decode Token String to obtain User ID
+    token, err := jwt.Parse(userToken.(string), func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("Unexpected String Sigining Method: %v", token.Header["alg"])
+        }
+
+        return []byte(os.Getenv("SECRETKEY")), nil
+    })
+
+    claims, ok := token.Claims.(jwt.MapClaims) 
+    if !(ok && token.Valid) {
+        c.AbortWithStatus(http.StatusUnauthorized)
+    }
+
+    userId := claims["sub"].(float64)
+
+    // Finding User Role
+    var user models.UserAccessRole
+    result := initializers.DB.Where("user_id=?", userId).Find(&user)
+    if result.Error != nil || result.RowsAffected == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Unable to Find User Role",
+        })
+        return
+    }
+    userRole := user.RoleId
+
+    // Finding User Groups
+    var userGroup []models.UserAccessGroup
+
+    initializers.DB.Where("user_id=?", userId).Find(&userGroup)
+    var userArrayGroup []uint
+    for i := 0; i < len(userGroup); i++ {
+        // userArrayGroup[i] = userGroup[i].GroupId
+        userArrayGroup = append(userArrayGroup, userGroup[i].GroupId)
+    }
+
+    var body struct {
+        Description string `json:"Description" binding:"required"`
+    }
+    err = c.Bind(&body)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Read Request Body",
+        })
+        return
+    }
+
+    // Finding Task ID 
+    var task models.Task
+    res := initializers.DB.Where("Description=?", body.Description).Find(&task)
+    if res.Error != nil || res.RowsAffected == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Failed to Find Task",
+        })
+        return
+    }
+
+    // Finding Roles that can Access the Task
+    var roleTask []models.TaskAccessRole
+
+    initializers.DB.Where("task_id=?", task.ID).Find(&roleTask)
+    var taskArrayRole []uint
+    for i := 0; i < len(taskArrayRole); i++ {
+        // taskArrayRole[i] = roleTask[i].RoleId
+        taskArrayRole = append(taskArrayRole, roleTask[i].RoleId)
+    }
+
+    // Finding Groups that can Access the Task
+    var groupTask []models.TaskAccessGroup
+
+    initializers.DB.Where("task_id=?", task.ID).Find(&groupTask)
+    var taskArrayGroup []uint
+    for i := 0; i < len(taskArrayGroup); i++ {
+        // taskArrayGroup[i] = groupTask[i].GroupId
+        taskArrayGroup = append(taskArrayGroup, groupTask[i].GroupId)
+    }
+
+    canDelete := false
+    // Checking if user can access the given task
+    // Checking Roles
+    fmt.Println(taskArrayRole, userRole)
+    commonTask := utils.ElementInArray(taskArrayRole, userRole)
+    fmt.Println(commonTask)
+    if commonTask {
+        canDelete = true
+    } else {
+        // Deny Delete
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "User Role Denied",
+        })
+        return
+    }
+
+    // Checking Groups
+    commonGroup := utils.ArrayIntersection(taskArrayGroup, userArrayGroup)
+    if len(commonGroup) > 0 {
+        canDelete = true
+    } else {
+        // Deny Delete
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "User Group Denied",
+        })
+        return
+    }
+
+    if canDelete {
+        initializers.DB.Delete(&task)
+    } else {
+        // Deny Delete
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "Cannot Delete Task",
         })
         return
     }
@@ -256,6 +380,7 @@ func AddTaskRole(c *gin.Context) {
         })
         return
     }
+	// fmt.Printf("Role found is %s\nRows: %d\nError: %s\n", role.RoleName, result.RowsAffected, result.Error)
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
@@ -265,12 +390,15 @@ func AddTaskRole(c *gin.Context) {
         })
         return
     }
+	// fmt.Printf("Task ID found: %d\n", task.ID)
 
     // Removing Open Access Role
     var openRole models.Role
-    initializers.DB.Where("role_id=?", 1).First(&openRole)
+	var taskopenrole models.TaskAccessRole
+    initializers.DB.Where("role_name=?", "open").First(&openRole)
+	// fmt.Printf("Open Role ID found: %d\n", openRole.ID)
     if openRole.ID != 0 {
-        initializers.DB.Delete(&openRole)
+        initializers.DB.Where("task_id = ? AND role_id = ?",task.ID, openRole.ID).Delete(&taskopenrole)
     }
 
     taskRole := models.TaskAccessRole{TaskId: task.ID, RoleId: role.ID}
@@ -320,7 +448,7 @@ func DeleteTaskRole(c *gin.Context) {
 
     var role models.Role
     result := initializers.DB.Where("role_name=?", body.RoleName).Find(&role)
-    if result.Error != nil || result.RowsAffected == 0 {
+    if result.Error != nil  || result.RowsAffected == 0{
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Role",
         })
@@ -329,7 +457,7 @@ func DeleteTaskRole(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil || res.RowsAffected == 0 {
+    if res.Error != nil || res.RowsAffected == 0{
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -345,6 +473,14 @@ func DeleteTaskRole(c *gin.Context) {
     }
 
     // Check if any other Task-Role Exists, if not, add Open Task-Role
+	var taskaccrole models.TaskAccessRole
+	res = initializers.DB.Where("task_id = ?", task.ID).Find(&taskaccrole)
+	if res.Error != nil || res.RowsAffected == 0 {
+		// No other (task_id, *) in the table
+		// Default open role should be added
+		taskaccrole = models.TaskAccessRole {TaskId: task.ID, RoleId: 1}
+		initializers.DB.Create(&taskaccrole)
+	}
 
     c.JSON(http.StatusOK,gin.H{})
 }
@@ -377,14 +513,14 @@ func AddTaskGroup(c *gin.Context) {
     err = c.Bind(&body)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
-            "error": err.Error(),
+            "error": "Failed to Read Request Body",
         })
         return
     }
 
     var group models.GroupDetails
     result := initializers.DB.Where("group_name=?", body.GroupName).Find(&group)
-    if result.Error != nil || result.RowsAffected == 0 {
+    if result.Error != nil || result.RowsAffected == 0{
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Group",
         })
@@ -393,12 +529,22 @@ func AddTaskGroup(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil || res.RowsAffected == 0 {
+    if res.Error != nil  || res.RowsAffected == 0{
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
         return
     }
+
+    // Removing Open Access Role
+    var openGroup models.GroupDetails
+	var taskopengrp models.TaskAccessGroup
+    initializers.DB.Where("group_name=?", "open").First(&openGroup)
+	// fmt.Printf("Open Role ID found: %d\n", openRole.ID)
+    if openGroup.ID != 0 {
+        initializers.DB.Where("task_id = ? AND group_id = ?",task.ID, openGroup.ID).Delete(&taskopengrp)
+    }
+
 
     taskGroup := models.TaskAccessGroup{TaskId: task.ID, GroupId: group.ID}
     insertResult := initializers.DB.Create(&taskGroup)
@@ -447,7 +593,7 @@ func DeleteTaskGroup(c *gin.Context) {
 
     var group models.GroupDetails
     result := initializers.DB.Where("group_name=?", body.GroupName).Find(&group)
-    if result.Error != nil || result.RowsAffected == 0 {
+    if result.Error != nil || result.RowsAffected == 0{
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Group",
         })
@@ -456,7 +602,7 @@ func DeleteTaskGroup(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil || res.RowsAffected == 0 {
+    if res.Error != nil  || res.RowsAffected == 0{
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -472,6 +618,12 @@ func DeleteTaskGroup(c *gin.Context) {
     }
 
     // Check if any other Task-Group Exists, if not, add Open Task-Group
+    var taskaccgrp models.TaskAccessGroup
+    res = initializers.DB.Where("task_id = ?", task.ID).Find(&taskaccgrp)
+    if res.Error != nil || res.RowsAffected == 0 {
+        taskaccgrp = models.TaskAccessGroup {TaskId: task.ID, GroupId: 1}
+        initializers.DB.Create(&taskaccgrp)
+    }
 
     c.JSON(http.StatusOK,gin.H{})
 }
