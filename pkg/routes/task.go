@@ -169,12 +169,17 @@ func UpdateTask(c *gin.Context) {
     // Checking if user can access the given task
     // Checking Roles
     // if userRole in retRoleTask:
+    fmt.Println(taskArrayRole, userRole)
     commonTask := utils.ElementInArray(taskArrayRole, userRole)
+    fmt.Println(commonTask)
     if commonTask {
         canUpdate = true
     } else {
         // Deny Update
-        c.AbortWithStatus(http.StatusUnauthorized)
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "User Role Denied",
+        })
+        return
     }
 
     // Checking Groups
@@ -183,7 +188,10 @@ func UpdateTask(c *gin.Context) {
         canUpdate = true
     } else {
         // Deny Update
-        c.AbortWithStatus(http.StatusUnauthorized)
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "User Group Denied",
+        })
+        return
     }
 
     if canUpdate {
@@ -195,7 +203,10 @@ func UpdateTask(c *gin.Context) {
         }
     } else {
         // Deny Update 
-        c.AbortWithStatus(http.StatusUnauthorized)
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "Cannot Update Task",
+        })
+        return
     }
 
     c.JSON(http.StatusOK, gin.H{})
