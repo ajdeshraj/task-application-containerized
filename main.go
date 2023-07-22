@@ -40,6 +40,8 @@ func main() {
     r.PATCH("/updatetask", middleware.RequireAuth, routes.UpdateTask)
     r.GET("/logout", routes.Logout)
     r.DELETE("/deleteuser", middleware.RequireAuth, routes.DeleteUser)
+    r.POST("/uploadusers", routes.ParseUserCSV)
+    r.POST("/uploadtasks", routes.ParseTaskCSV)
 
     r.Run()
 }

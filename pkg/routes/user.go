@@ -1,12 +1,14 @@
 package routes
 
 import (
-    "os"
-    "fmt"
-    "time"
 	"bar/foo/pkg/initializers"
 	"bar/foo/pkg/models"
+	"encoding/csv"
+	"fmt"
+    "log"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
@@ -70,7 +72,7 @@ func Login(c *gin.Context) {
     var user models.User
 
     initializers.DB.Where("email=?", body.Email).Find(&user)
-    if user.ID == 0 { 
+    if user.ID == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Invalid Email or Password",
         })
@@ -154,7 +156,7 @@ func AddUserRole(c *gin.Context) {
 
     var role models.Role
     result := initializers.DB.Where("role_name=?", body.RoleName).Find(&role)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Role",
         })
@@ -243,7 +245,7 @@ func AddUserGroup(c *gin.Context) {
 
     var group models.GroupDetails
     result := initializers.DB.Where("group_name=?", body.GroupName).Find(&group)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Group",
         })
@@ -298,7 +300,7 @@ func DeleteUserGroup(c *gin.Context) {
 
     var group models.GroupDetails
     result := initializers.DB.Where("group_name=?", body.GroupName).Find(&group)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Group",
         })
@@ -373,4 +375,131 @@ func Logout(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{
         "message": "Successfully Logged Out",
     })
+}
+
+func ParseUserCSV(c *gin.Context) {
+    type userData struct {
+        Email string
+        Password string
+        Role string
+        Group string
+    }
+
+    fileHeader, err := c.FormFile("file.csv")
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Error Receiving File",
+        })
+        return
+    }
+
+    FileToImport, err := fileHeader.Open()
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Error Opening File",
+        })
+        return
+    }
+
+    defer FileToImport.Close()
+
+    csvReader := csv.NewReader(FileToImport)
+    data, err := csvReader.ReadAll()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    var userContents []userData
+    for i, line := range data {
+        if i > 0 {
+            var user userData
+            for j, field := range line {
+                if j == 0 {
+                    user.Email = field
+                } else if j == 1 {
+                    user.Password = field
+                } else if j == 2 {
+                    user.Role = field
+                } else {
+                    user.Group = field
+                }
+            }
+            userContents = append(userContents, user)
+        }
+    }
+
+    for i := 0; i < len(userContents); i++ {
+        // Hash Password
+        hash, err := bcrypt.GenerateFromPassword([]byte(userContents[i].Password), bcrypt.DefaultCost)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Hash Password",
+            })
+            return
+        }
+
+        // Create User
+        user := models.User{Email: userContents[i].Email, Password: string(hash)}
+        result := initializers.DB.Create(&user)
+
+        if result.Error != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Create User",
+            })
+            continue
+        }
+
+        // Getting User ID of inserted Record
+        var tempUser models.User
+
+        initializers.DB.Where("email=?", userContents[i].Email).Find(&tempUser)
+        if tempUser.ID == 0 { 
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Invalid Email or Password",
+            })
+            return
+        }
+
+        // Getting Role ID of inserted Record
+        var tempRole models.Role
+
+        initializers.DB.Where("role_name=?", userContents[i].Role).Find(&tempRole)
+        if tempRole.ID == 0 {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Invalid Role Name",
+            })
+            return
+        }
+
+        // Adding User-Role
+        userRole := models.UserAccessRole{UserId: tempUser.ID, RoleId: tempRole.ID}
+        roleRes := initializers.DB.Create(&userRole)
+        if roleRes.Error != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Create User-Role",
+            })
+            continue
+        }
+
+        // Getting Group ID of inserted Record
+        var tempGroup models.GroupDetails
+
+        initializers.DB.Where("group_name=?", userContents[i].Group).Find(&tempGroup)
+        if tempGroup.ID == 0 {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Invalid Role Name",
+            })
+            return
+        }
+
+        // Adding User-Group
+        userGroup := models.UserAccessGroup{UserId: tempUser.ID, GroupId: tempGroup.ID}
+        groupRes := initializers.DB.Create(&userGroup)
+        if groupRes.Error != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Create User-Group",
+            })
+            continue
+        }
+    }
 }

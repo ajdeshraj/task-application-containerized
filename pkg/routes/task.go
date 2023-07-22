@@ -4,9 +4,12 @@ import (
 	"bar/foo/pkg/initializers"
 	"bar/foo/pkg/models"
 	"bar/foo/pkg/utils"
+	"encoding/csv"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
@@ -104,7 +107,7 @@ func UpdateTask(c *gin.Context) {
     // Finding User Role
     var user models.UserAccessRole
     result := initializers.DB.Where("user_id=?", userId).Find(&user)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Unable to Find User Role",
         })
@@ -138,7 +141,7 @@ func UpdateTask(c *gin.Context) {
     // Finding Task ID 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.OldDescription).Find(&task)
-    if res.Error != nil {
+    if res.Error != nil || res.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -247,7 +250,7 @@ func AddTaskRole(c *gin.Context) {
 
     var role models.Role
     result := initializers.DB.Where("role_name=?", body.RoleName).Find(&role)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Role",
         })
@@ -256,7 +259,7 @@ func AddTaskRole(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil {
+    if res.Error != nil || res.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -317,7 +320,7 @@ func DeleteTaskRole(c *gin.Context) {
 
     var role models.Role
     result := initializers.DB.Where("role_name=?", body.RoleName).Find(&role)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Role",
         })
@@ -326,7 +329,7 @@ func DeleteTaskRole(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil {
+    if res.Error != nil || res.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -381,7 +384,7 @@ func AddTaskGroup(c *gin.Context) {
 
     var group models.GroupDetails
     result := initializers.DB.Where("group_name=?", body.GroupName).Find(&group)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Group",
         })
@@ -390,7 +393,7 @@ func AddTaskGroup(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil {
+    if res.Error != nil || res.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -444,7 +447,7 @@ func DeleteTaskGroup(c *gin.Context) {
 
     var group models.GroupDetails
     result := initializers.DB.Where("group_name=?", body.GroupName).Find(&group)
-    if result.Error != nil {
+    if result.Error != nil || result.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Group",
         })
@@ -453,7 +456,7 @@ func DeleteTaskGroup(c *gin.Context) {
 
     var task models.Task
     res := initializers.DB.Where("Description=?", body.TaskDescription).Find(&task)
-    if res.Error != nil {
+    if res.Error != nil || res.RowsAffected == 0 {
         c.JSON(http.StatusBadRequest, gin.H{
             "error": "Failed to Find Task",
         })
@@ -471,4 +474,136 @@ func DeleteTaskGroup(c *gin.Context) {
     // Check if any other Task-Group Exists, if not, add Open Task-Group
 
     c.JSON(http.StatusOK,gin.H{})
+}
+
+func ParseTaskCSV(c *gin.Context) {
+    type taskData struct {
+        Description string
+        Completed bool
+        CreatorId uint
+        Role string
+        Group string
+    }
+
+    fileHeader, err := c.FormFile("file.csv")
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Error Receiving File",
+        })
+        return
+    }
+
+    FileToImport, err := fileHeader.Open()
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Error Opening File",
+        })
+        return
+    }
+
+    defer FileToImport.Close()
+
+    csvReader := csv.NewReader(FileToImport)
+    data, err := csvReader.ReadAll()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    var taskContents []taskData
+    for i, line := range data {
+        if i > 0 {
+            var task taskData
+            for j, field := range line {
+                if j == 0 {
+                    task.Description = field
+                } else if j == 1 {
+                    // task.Completed = bool(field)
+                    task.Completed, err = strconv.ParseBool(field)
+                    if err != nil {
+                        log.Println(err)
+                        continue
+                    }
+                } else if j == 2 {
+                    // task.CreatorId = uint(field)
+                    num, err := strconv.ParseUint(field, 10, 64)
+                    if err != nil {
+                        log.Println(err)
+                        continue
+                    }
+                    task.CreatorId = uint(num)
+                } else if j == 3 {
+                    task.Role = field
+                } else {
+                    task.Group = field
+                }
+            }
+            taskContents = append(taskContents, task)
+        }
+    }
+
+    for i := 0; i < len(taskContents); i++ {
+        // Create User
+        task := models.Task{Description: taskContents[i].Description, Completed: taskContents[i].Completed, CreatorId: taskContents[i].CreatorId}
+        result := initializers.DB.Create(&task)
+
+        if result.Error != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Create Task",
+            })
+            continue
+        }
+
+        // Getting Task ID of inserted Record
+        var tempTask models.Task
+
+        initializers.DB.Where("Description=?", taskContents[i].Description).Find(&tempTask)
+        if tempTask.ID == 0 { 
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Invalid Information",
+            })
+            return
+        }
+
+        // Getting Role ID of inserted Record
+        var tempRole models.Role
+
+        initializers.DB.Where("role_name=?", taskContents[i].Role).Find(&tempRole)
+        if tempRole.ID == 0 {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Invalid Role Name",
+            })
+            return
+        }
+
+        // Adding Task-Role
+        taskRole := models.TaskAccessRole{TaskId: tempTask.ID, RoleId: tempRole.ID}
+        roleRes := initializers.DB.Create(&taskRole)
+        if roleRes.Error != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Create Task-Role",
+            })
+            continue
+        }
+
+        // Getting Group ID of inserted Record
+        var tempGroup models.GroupDetails
+
+        initializers.DB.Where("group_name=?", taskContents[i].Group).Find(&tempGroup)
+        if tempGroup.ID == 0 {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Invalid Role Name",
+            })
+            return
+        }
+
+        // Adding User-Group
+        taskGroup := models.TaskAccessGroup{TaskId: tempTask.ID, GroupId: tempGroup.ID}
+        groupRes := initializers.DB.Create(&taskGroup)
+        if groupRes.Error != nil {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": "Failed to Create Task-Group",
+            })
+            continue
+        }
+    }
 }
